@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retro Chat App</title>
+  <style>
+    /* Retro styling */
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #000080; /* Navy blue background */
+      color: #00FF00; /* Green text */
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+    }
+    
+    .container {
+      display: flex;
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      height: 100%;
+    }
+    
+    .sidebar {
+      width: 200px;
+      background-color: #000055;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+    
+    .chat-window {
+      flex: 1;
+      background-color: #000033;
+      border: 2px solid #00FF00;
+      padding: 15px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    
+    .message-form {
+      display: flex;
+    }
+    
+    input, select, button {
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #000033;
+      color: #00FF00;
+      border: 2px solid #00FF00;
+      padding: 10px;
+    }
+    
+    input {
+      flex: 1;
+      margin-right: 10px;
+    }
+    
+    button {
+      cursor: pointer;
+    }
+    
+    button:hover {
+      background-color: #003300;
+    }
+    
+    .message {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-left: 4px solid #00FF00;
+      background-color: rgba(0, 255, 0, 0.1);
+    }
+    
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+      font-size: 0.9em;
+    }
+    
+    .message-content {
+      word-wrap: break-word;
+    }
+    
+    .room-select, .user-select {
+      margin-bottom: 20px;
+    }
+    
+    h2 {
+      text-decoration: underline;
+      color: #00FFFF; /* Cyan */
+    }
+    
+    h3 {
+      margin-top: 0;
+      color: #00FFFF; /* Cyan */
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 10px;
+    }
+    
+    select {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    
+    .room-button {
+      margin-bottom: 5px;
+      width: 100%;
+      text-align: left;
+      padding: 10px;
+    }
+    
+    .active-room {
+      background-color: #003300;
+    }
+    
+    /* Make it mobile responsive */
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+      
+      .sidebar {
+        width: auto;
+        order: 2;
+        padding: 10px;
+      }
+      
+      .main {
+        order: 1;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <div class="user-select">
+        <h3>Choose Your Username</h3>
+        <select id="usernameSelect"></select>
+      </div>
+      
+      <div class="room-select">
+        <h3>Chat Rooms</h3>
+        <div id="roomsList"></div>
+      </div>
+    </div>
+    
+    <div class="main">
+      <h2 id="currentRoom">Select a Room</h2>
+      <div class="chat-window" id="chatWindow">
+        <p>Welcome to the Retro Chat App! Select a room to begin chatting.</p>
+      </div>
+      
+      <form class="message-form" id="messageForm">
+        <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+        <button type="submit" id="sendButton" disabled>Send</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const apiUrl = '';  // Empty string since we're serving from the same origin
+      
+      let currentUser = null;
+      let currentRoom = null;
+      let users = [];
+      let rooms = [];
+      
+      const usernameSelect = document.getElementById('usernameSelect');
+      const roomsList = document.getElementById('roomsList');
+      const currentRoomTitle = document.getElementById('currentRoom');
+      const chatWindow = document.getElementById('chatWindow');
+      const messageForm = document.getElementById('messageForm');
+      const messageInput = document.getElementById('messageInput');
+      const sendButton = document.getElementById('sendButton');
+      
+      // Fetch users and rooms on page load
+      Promise.all([
+        fetch(`${apiUrl}/api/users`).then(res => res.json()),
+        fetch(`${apiUrl}/api/rooms`).then(res => res.json())
+      ])
+      .then(([usersData, roomsData]) => {
+        users = usersData;
+        rooms = roomsData;
+        
+        // Populate users dropdown
+        usernameSelect.innerHTML = '<option value="">Select a username</option>';
+        users.forEach(user => {
+          const option = document.createElement('option');
+          option.value = user.id;
+          option.textContent = user.username;
+          usernameSelect.appendChild(option);
+        });
+        
+        // Populate rooms list
+        roomsList.innerHTML = '';
+        rooms.forEach(room => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'room-button';
+          button.dataset.roomId = room.id;
+          button.textContent = room.name;
+          button.addEventListener('click', () => selectRoom(room));
+          roomsList.appendChild(button);
+        });
+      })
+      .catch(error => {
+        console.error('Error loading initial data:', error);
+        chatWindow.innerHTML = '<p>Error loading data. Please try refreshing the page.</p>';
+      });
+      
+      // Handle username selection
+      usernameSelect.addEventListener('change', function() {
+        const userId = this.value;
+        if (userId) {
+          currentUser = users.find(user => user.id == userId);
+          enableMessaging();
+          
+          // If room is already selected, load messages
+          if (currentRoom) {
+            loadMessages(currentRoom.id);
+          }
+        } else {
+          currentUser = null;
+          disableMessaging();
+        }
+      });
+      
+      // Handle room selection
+      function selectRoom(room) {
+        currentRoom = room;
+        currentRoomTitle.textContent = `Room: ${room.name}`;
+        
+        // Update active room styling
+        document.querySelectorAll('.room-button').forEach(btn => {
+          btn.classList.remove('active-room');
+        });
+        document.querySelector(`.room-button[data-room-id="${room.id}"]`).classList.add('active-room');
+        
+        // Load messages for this room
+        loadMessages(room.id);
+        
+        // Enable messaging if user is selected
+        if (currentUser) {
+          enableMessaging();
+        }
+      }
+      
+      // Load messages for a room
+      function loadMessages(roomId) {
+        chatWindow.innerHTML = '<p>Loading messages...</p>';
+        
+        fetch(`${apiUrl}/api/rooms/${roomId}/messages`)
+          .then(res => res.json())
+          .then(messages => {
+            if (messages.length === 0) {
+              chatWindow.innerHTML = '<p>No messages yet. Be the first to write something!</p>';
+            } else {
+              chatWindow.innerHTML = '';
+              messages.forEach(displayMessage);
+              
+              // Scroll to bottom
+              chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+          })
+          .catch(error => {
+            console.error('Error loading messages:', error);
+            chatWindow.innerHTML = '<p>Error loading messages. Please try again.</p>';
+          });
+      }
+      
+      // Display a message in the chat window
+      function displayMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+        
+        const header = document.createElement('div');
+        header.className = 'message-header';
+        
+        const username = document.createElement('span');
+        username.textContent = message.username;
+        
+        const timestamp = document.createElement('span');
+        const date = new Date(message.timestamp);
+        timestamp.textContent = date.toLocaleString();
+        
+        header.appendChild(username);
+        header.appendChild(timestamp);
+        
+        const content = document.createElement('div');
+        content.className = 'message-content';
+        content.textContent = message.content;
+        
+        messageDiv.appendChild(header);
+        messageDiv.appendChild(content);
+        
+        chatWindow.appendChild(messageDiv);
+      }
+      
+      // Handle message submission
+      messageForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const content = messageInput.value.trim();
+        if (!content || !currentUser || !currentRoom) return;
+        
+        const message = {
+          roomId: currentRoom.id,
+          userId: currentUser.id,
+          content: content
+        };
+        
+        // Send message to server
+        fetch(`${apiUrl}/api/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(message)
+        })
+        .then(res => res.json())
+        .then(newMessage => {
+          // Display the new message
+          displayMessage(newMessage);
+          
+          // Clear input and scroll to bottom
+          messageInput.value = '';
+          chatWindow.scrollTop = chatWindow.scrollHeight;
+        })
+        .catch(error => {
+          console.error('Error sending message:', error);
+          alert('Failed to send message. Please try again.');
+        });
+      });
+      
+      // Enter key to submit
+      messageInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendButton.click();
+        }
+      });
+      
+      // Enable/disable messaging
+      function enableMessaging() {
+        if (currentUser && currentRoom) {
+          messageInput.disabled = false;
+          sendButton.disabled = false;
+          messageInput.placeholder = "Type your message...";
+        }
+      }
+      
+      function disableMessaging() {
+        messageInput.disabled = true;
+        sendButton.disabled = true;
+        messageInput.placeholder = "Select a username and room to chat";
+      }
+    });
+  </script>
+</body>
+</html>
